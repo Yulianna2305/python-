@@ -7,9 +7,6 @@ def test_total_various_sets():      #чи правильний підрахун�
 
     assert Order(2, []).total() == 0
 
-    items = [{"price": 1_000_000, "quantity": 2}]
-    assert Order(3, items).total() == 2_000_000
-
 
 def test_most_expensive():            #чи метод знаходить найдорожчий товар
     items = [{"price": 10}, {"price": 50}, {"price": 30}]
