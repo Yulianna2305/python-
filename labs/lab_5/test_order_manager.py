@@ -53,7 +53,7 @@ def test_repr():            #чи повертає коректний текст
     items = [{"price": 1, "quantity": 1}]
     order = Order(9, items)
     r = repr(order)
-    assert f"<Order {order.id}" in r
+    assert f"<Order {order.id}>" in r
     assert f"{len(items)} items" in r
 
 
