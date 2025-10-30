@@ -25,9 +25,10 @@ def test_apply_discount_valid_for_all():     #перевіряє чи прави
         {"price": 300, "quantity": 3},
     ]
     order = Order(6, items)
+    old_prices = [item["price"] for item in items]
     order.apply_discount(10)
-    for item in items:
-        assert item["price"] == pytest.approx(item["price"] / 0.9 * 0.9)  
+    for item, old_price in zip(items, old_prices):
+        assert item["price"] == pytest.approx(old_price * 0.9)  
 
 
 @pytest.mark.parametrize("discount", [-10, 101, 999])
@@ -52,9 +53,8 @@ def test_apply_discount_extreme():      # чи норм працює при 0% �
 def test_repr():            #чи повертає коректний текстовий опис 
     items = [{"price": 1, "quantity": 1}]
     order = Order(9, items)
-    r = repr(order)
-    assert f"Order {order.id}" in r
-    assert f"{len(items)} items" in r
+    assert f"<Order {order.id}" in repr(order)
+    assert f"{len(items)} items" in repr(order)
 
 
 
