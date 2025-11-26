@@ -114,7 +114,6 @@ class Inventory:
 if __name__ == "__main__":
     inv = Inventory()
 
-    # додаємо кілька тестових предметів
     inv.add_item(Item("Гаечний ключ", "інструменти", 3, 15.0, "вживаний", "гараж"))
     inv.add_item(Item("Ноутбук", "електроніка", 1, 18000, "вживаний", "кімната"))
     inv.add_item(Item("Сокира", "інструменти", 2, 120.0, "новий", "комора"))
@@ -125,17 +124,14 @@ if __name__ == "__main__":
 
     print("\nЗагальна вартість:", inv.total_inventory_value(), "грн")
 
-    # сортування
     inv.sort_items()
     print("\nПісля сортування:")
     for item in inv.items:
         print(item)
 
-    # запис у CSV
     inv.save_to_csv("inventory.csv")
     print("\nФайл inventory.csv створено!")
 
-    # звіт по категоріях
     print("\nЗвіт:")
     print(inv.export_summary())
 
