@@ -1,4 +1,3 @@
-# api_client.py
 import csv
 import os
 import tkinter as tk
