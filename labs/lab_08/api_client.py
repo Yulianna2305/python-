@@ -1,129 +1,163 @@
-import os
 import csv
+import os
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
 import requests
 
-COLUMNS = ("id", "name", "category", "quantity", "price", "location", "created_at")
+SERVER_URL = "http://127.0.0.1:8000"
+CACHE_FILE = "cache.csv"
+FIELDS = ["id", "name", "category", "quantity", "price", "location", "created_at"]
 
 
-class InventoryClient:
-    def __init__(self, base_url="http://127.0.0.1:5000", cache_path="cache.csv"):
-        self.url = base_url
-        self.cache_path = cache_path
+class ApiClient:
+    def __init__(self):
+        self.mode = "online"
 
+    def ensure_cache(self):
+        if not os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=FIELDS)
+                writer.writeheader()
 
-    def _load_cache(self):
-        if not os.path.exists(self.cache_path):
-            return []
-        with open(self.cache_path, newline="", encoding="utf-8") as f:
-            r = csv.DictReader(f)
-            items = []
-            for row in r:
-                row["quantity"] = int(row["quantity"])
-                row["price"] = float(row["price"])
-                items.append(row)
-        return items
+    def load_cache(self):
+        self.ensure_cache()
+        with open(CACHE_FILE, newline="", encoding="utf-8") as f:
+            return list(csv.DictReader(f))
 
-    def _save_cache(self, items):
-        with open(self.cache_path, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=COLUMNS)
-            w.writeheader()
-            w.writerows(items)
+    def save_cache(self, items):
+        self.ensure_cache()
+        with open(CACHE_FILE, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=FIELDS)
+            writer.writeheader()
+            writer.writerows(items)
 
-    def fetch_items(self):
+    def get_items(self):
         try:
-            r = requests.get(self.url + "/items", timeout=2)
+            r = requests.get(f"{SERVER_URL}/items", timeout=2)
             r.raise_for_status()
-            items = r.json()
-            self._save_cache(items)
-            return items, True
-        except:
-            return self._load_cache(), False
+            data = r.json()
+            self.save_cache(data)
+            self.mode = "online"
+            return data, None
+        except Exception as e:
+            self.mode = "offline"
+            return self.load_cache(), f"Offline режим: {e}"
 
-    def add_item(self, data):
-        payload = {
-            "name": data["name"],
-            "category": data["category"],
-            "quantity": data["quantity"],
-            "price": data["price"],
-            "location": data["location"]
-        }
-        try:
-            r = requests.post(self.url + "/items", json=payload, timeout=2)
-            r.raise_for_status()
-            items, _ = self.fetch_items()
-            return items, True, "Додано на сервері"
-        except:
-            items = self._load_cache()
+    def create_item(self, item):
+        if self.mode == "online":
+            try:
+                r = requests.post(f"{SERVER_URL}/items", json=item, timeout=2)
+                r.raise_for_status()
+                return r.json(), None
+            except Exception:
+                self.mode = "offline"
+        return self.create_offline(item)
 
-            new_id = max([int(x["id"]) for x in items] or [0]) + 1
-            item = {
-                "id": str(new_id),
-                "name": payload["name"],
-                "category": payload["category"],
-                "quantity": int(payload["quantity"]),
-                "price": float(payload["price"]),
-                "location": payload["location"],
-                "created_at": datetime.now().isoformat(timespec="seconds")
-            }
-            items.append(item)
-            self._save_cache(items)
-            return items, False, "Додано офлайн"
-
-    def update_item(self, item_id, data):
-        payload = {
-            "name": data["name"],
-            "category": data["category"],
-            "quantity": data["quantity"],
-            "price": data["price"],
-            "location": data["location"]
-        }
-        try:
-            r = requests.put(f"{self.url}/items/{item_id}", json=payload, timeout=2)
-            r.raise_for_status()
-            items, _ = self.fetch_items()
-            return items, True, "Оновлено на сервері"
-        except:
-            items = self._load_cache()
-            for it in items:
-                if it["id"] == str(item_id):
-                    it.update(payload)
-            self._save_cache(items)
-            return items, False, "Оновлено офлайн"
+    def create_offline(self, item):
+        items = self.load_cache()
+        new_id = str(max([int(i["id"]) for i in items], default=0) + 1)
+        item["id"] = new_id
+        item["created_at"] = datetime.now().isoformat(timespec="seconds")
+        items.append(item)
+        self.save_cache(items)
+        return item, None
 
     def delete_item(self, item_id):
-        try:
-            r = requests.delete(f"{self.url}/items/{item_id}", timeout=2)
-            if r.status_code not in (200, 204):
-                raise Exception()
-            items, _ = self.fetch_items()
-            return items, True, "Видалено на сервері"
-        except:
-            items = [x for x in self._load_cache() if x["id"] != str(item_id)]
-            self._save_cache(items)
-            return items, False, "Видалено офлайн"
+        if self.mode == "online":
+            try:
+                r = requests.delete(f"{SERVER_URL}/items/{item_id}", timeout=2)
+                r.raise_for_status()
+                return None
+            except:
+                self.mode = "offline"
+        items = self.load_cache()
+        items = [i for i in items if i["id"] != item_id]
+        self.save_cache(items)
+        return None
 
-    def sync_now(self):
-        items = self._load_cache()
-        try:
-            server_items = requests.get(self.url + "/items", timeout=2).json()
-            for it in server_items:
-                requests.delete(f"{self.url}/items/{it['id']}", timeout=2)
-            for it in items:
-                requests.post(self.url + "/items", json={
-                    "name": it["name"],
-                    "category": it["category"],
-                    "quantity": it["quantity"],
-                    "price": it["price"],
-                    "location": it["location"]
-                }, timeout=2)
-            fresh_items, _ = self.fetch_items()
-            return fresh_items, True, "Синхронізовано"
-        except:
-            return items, False, "Сервер недоступний"
 
-    def export_csv(self, path):
-        r = requests.get(self.url + "/export", timeout=2)
-        r.raise_for_status()
-        with open(path, "wb") as f:
-            f.write(r.content)
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Inventory Client (Tkinter + Flask)")
+        self.geometry("850x500")
+
+        self.api = ApiClient()
+
+        self.build_ui()
+        self.reload_items()
+
+    def build_ui(self):
+        frame = ttk.Frame(self)
+        frame.pack(fill="both", expand=True)
+
+        cols = FIELDS
+        self.tree = ttk.Treeview(frame, columns=cols, show="headings")
+        for c in cols:
+            self.tree.heading(c, text=c)
+            self.tree.column(c, width=120)
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        sb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
+        sb.pack(side="left", fill="y")
+        self.tree.configure(yscrollcommand=sb.set)
+
+        form = ttk.Frame(self)
+        form.pack(side="right", fill="y", padx=10)
+
+        self.inputs = {}
+        for i, field in enumerate(["name", "category", "quantity", "price", "location"]):
+            ttk.Label(form, text=field).grid(row=i, column=0, pady=3)
+            var = tk.StringVar()
+            ttk.Entry(form, textvariable=var).grid(row=i, column=1)
+            self.inputs[field] = var
+
+        ttk.Button(form, text="Додати", command=self.add_item).grid(row=6, column=0, pady=10)
+        ttk.Button(form, text="Видалити", command=self.del_item).grid(row=6, column=1)
+
+        self.status = tk.StringVar()
+        ttk.Label(self, textvariable=self.status).pack(side="bottom", fill="x")
+
+    def set_status(self, txt):
+        self.status.set(txt)
+
+    def reload_items(self):
+        items, err = self.api.get_items()
+        self.tree.delete(*self.tree.get_children())
+        for i in items:
+            self.tree.insert("", tk.END, values=[i[k] for k in FIELDS])
+        if err:
+            self.set_status(err)
+        else:
+            self.set_status("Сервер онлайн")
+
+    def add_item(self):
+        try:
+            item = {
+                "name": self.inputs["name"].get(),
+                "category": self.inputs["category"].get(),
+                "quantity": int(self.inputs["quantity"].get()),
+                "price": float(self.inputs["price"].get()),
+                "location": self.inputs["location"].get(),
+            }
+        except:
+            messagebox.showerror("Помилка", "Невірні дані")
+            return
+
+        _, err = self.api.create_item(item)
+        if err:
+            messagebox.showerror("Помилка", err)
+        self.reload_items()
+
+    def del_item(self):
+        sel = self.tree.selection()
+        if not sel:
+            return
+        item_id = self.tree.item(sel[0], "values")[0]
+        self.api.delete_item(item_id)
+        self.reload_items()
+
+
+if __name__ == "__main__":
+    App().mainloop()
