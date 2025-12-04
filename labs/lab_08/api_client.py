@@ -38,7 +38,6 @@ class ApiClient:
                 writer.writerow(item)
 
     def get_items(self):
-        """Спроба взяти дані з сервера, якщо не виходить - з кешу."""
         try:
             resp = requests.get(f"{SERVER_URL}/items", timeout=2)
             resp.raise_for_status()
